@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional, Union
 
 import httpx
 from openai import OpenAI, AsyncOpenAI
-from openai.types import Embedding, ChatCompletion
+from openai.types import Embedding
 from openai import RateLimitError, APIError
 
 from app.core.config import settings
@@ -434,7 +434,7 @@ class OpenAIService:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         stream: bool = False
-    ) -> ChatCompletion:
+    ) -> Any:
         """
         Create chat completion with error handling and rate limiting.
         

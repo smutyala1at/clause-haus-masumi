@@ -58,4 +58,3 @@ def downgrade() -> None:
     op.drop_index('idx_bgb_embeddings_book_division', table_name='bgb_embeddings')
     op.drop_table('bgb_embeddings')
     # ### end Alembic commands ###
-

@@ -2,10 +2,10 @@
 OpenAI-related Pydantic schemas and types
 """
 
-from typing import List, Optional
+from typing import List, Optional, Any
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
-from openai.types import Embedding, ChatCompletion
+from openai.types import Embedding
 
 
 class OpenAIErrorType(str, Enum):
@@ -67,7 +67,7 @@ class EmbeddingResponse(BaseModel):
 
 class ChatResponse(BaseModel):
     """Response for chat completion"""
-    completion: ChatCompletion = Field(..., description="Chat completion object")
+    completion: Any = Field(..., description="Chat completion object")
     content: str = Field(..., description="Extracted message content")
     tokens_used: int = Field(..., description="Total tokens used in request and response")
 

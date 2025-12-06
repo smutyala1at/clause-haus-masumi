@@ -1,5 +1,5 @@
 """
-Database models
+BGB Embedding database model
 """
 
 from sqlalchemy import Column, String, Integer, Text, DateTime, Index
@@ -51,7 +51,8 @@ class BGBEmbedding(Base):
     # Indexes for better query performance
     __table_args__ = (
         Index('idx_bgb_embeddings_book_division', 'book', 'division'),
-        Index('idx_bgb_embeddings_section_number', 'section_number'),
+        # Note: section_number doesn't need explicit Index here because 
+        # unique=True on the column already creates a unique index
     )
     
     def __repr__(self):

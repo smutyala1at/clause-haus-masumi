@@ -10,7 +10,7 @@ from alembic import context
 
 # Import your models and base
 from app.db.base import Base
-from app.db.models import BGBEmbedding  # Import all models here
+from app.db.models.bgb_embedding import BGBEmbedding  # Import all models here
 from app.core.config import settings
 
 # this is the Alembic Config object, which provides

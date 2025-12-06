@@ -105,7 +105,7 @@ alembic history
 
 ```python
 from app.db.base import get_db
-from app.db.models import BGBEmbedding
+from app.db.models.bgb_embedding import BGBEmbedding
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 

@@ -9,6 +9,7 @@ from app.api.v1 import availability
 from app.api.v1 import input_schema
 from app.api.v1 import health
 from app.api.v1 import bgb_parse
+from app.api.v1 import bgb_embed
 
 api_router = APIRouter()
 
@@ -18,3 +19,4 @@ api_router.include_router(availability.router, prefix="/availability", tags=["se
 api_router.include_router(input_schema.router, prefix="/input_schema", tags=["service"])
 api_router.include_router(health.router, prefix="/health", tags=["service"])
 api_router.include_router(bgb_parse.router, prefix="/bgb", tags=["bgb"])
+api_router.include_router(bgb_embed.router, prefix="/bgb", tags=["bgb"])
