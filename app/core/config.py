@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Application
-    APP_NAME: str = "Masumi Service"
+    APP_NAME: str = "Clause Haus"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     
@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     
     # Database (for future use)
     DATABASE_URL: Optional[str] = None
+    
+    # BGB Parser API Key
+    API_KEY: Optional[str] = None
     
     class Config:
         env_file = ".env"
