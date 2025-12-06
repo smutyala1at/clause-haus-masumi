@@ -23,8 +23,7 @@ async def get_status(
     Get the status of a job.
     """
     try:
-        status = await job_service.get_job_status(job_id)
-        return StatusResponse(**status)
+        return await job_service.get_job_status(job_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

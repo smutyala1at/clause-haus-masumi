@@ -23,16 +23,13 @@ async def start_job(
     """
     Start a new job and begin processing it.
     """
-    job_id = await job_service.create_job(
+    response = await job_service.create_job(
         input_data=request.input_data,
         payment_id=request.payment_id
     )
     
     # Start processing in background
-    background_tasks.add_task(job_service.process_job, job_id)
+    background_tasks.add_task(job_service.process_job, response.job_id)
     
-    return StartJobResponse(
-        job_id=job_id,
-        payment_id=request.payment_id
-    )
+    return response
 

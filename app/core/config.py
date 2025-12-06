@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # BGB Parser API Key
     API_KEY: Optional[str] = None
     
+    # OpenAI Configuration
+    OPENAI_API_KEY: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

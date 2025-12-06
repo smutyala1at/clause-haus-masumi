@@ -6,6 +6,8 @@ import logging
 from typing import Dict, Any
 from uuid import uuid4
 
+from app.schemas.job import StartJobRequest, StartJobResponse, StatusResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +18,7 @@ class JobService:
         # In-memory job storage (replace with database in production)
         self.jobs: Dict[str, Dict[str, Any]] = {}
     
-    async def create_job(self, input_data: Any, payment_id: str = None) -> str:
+    async def create_job(self, input_data: Any, payment_id: str = None) -> StartJobResponse:
         """
         Create a new job and return its ID
         
@@ -41,7 +43,7 @@ class JobService:
         }
         
         logger.info(f"Created job {job_id}")
-        return job_id
+        return StartJobResponse(job_id=job_id, payment_id=payment_id)
     
     async def process_job(self, job_id: str) -> None:
         """
@@ -102,7 +104,7 @@ class JobService:
         
         return self.jobs[job_id]
     
-    async def get_job_status(self, job_id: str) -> Dict[str, Any]:
+    async def get_job_status(self, job_id: str) -> StatusResponse:
         """
         Get job status
         
@@ -110,12 +112,15 @@ class JobService:
             job_id: Job identifier
             
         Returns:
-            Job status dictionary
+            Job status response
+            
+        Raises:
+            ValueError: If job not found
         """
         job = await self.get_job(job_id)
-        return {
-            "job_id": job_id,
-            "status": job["status"],
-            "result": job.get("result"),
-            "error": job.get("error")
-        }
+        return StatusResponse(
+            job_id=job_id,
+            status=job["status"],
+            result=job.get("result"),
+            error=job.get("error")
+        )
