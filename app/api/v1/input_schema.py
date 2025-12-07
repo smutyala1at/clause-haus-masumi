@@ -35,9 +35,9 @@ async def input_schema():
                 },
                 "description": "Array of key-value pairs. Must include a PDF document with key 'document' or 'pdf'"
             },
-            "payment_id": {
+            "identifier_from_purchaser": {
                 "type": "string",
-                "description": "Optional payment ID"
+                "description": "Optional identifier from purchaser (MIP-003)"
             }
         },
         "required": ["input_data"]

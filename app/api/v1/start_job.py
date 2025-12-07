@@ -25,22 +25,23 @@ async def start_job(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Start a new contract analysis job.
+    Start a new contract analysis job (MIP-003 compliant).
     
     Accepts a PDF document (base64 or URL) and analyzes it against German BGB laws
     to identify problematic, unfair, or illegal clauses.
     
-    Request format:
+    Request format (MIP-003):
     {
+        "identifier_from_purchaser": "optional_identifier",
         "input_data": [
             {"key": "document", "value": "data:application/pdf;base64,..."}
-        ],
-        "payment_id": "optional_payment_id"
+        ]
     }
     """
+    # Generate payment_id from job_id (MIP-003: payment_id is returned in response)
     response = await job_service.create_job(
         input_data=request.input_data,
-        payment_id=request.payment_id
+        identifier_from_purchaser=request.identifier_from_purchaser
     )
     
     # Start processing in background with database session

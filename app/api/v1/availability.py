@@ -11,11 +11,10 @@ router = APIRouter()
 @router.get("")
 async def availability():
     """
-    Check if the service is available and ready to accept jobs.
+    Check if the service is available and ready to accept jobs (MIP-003 compliant).
     """
     return {
-        "available": True,
-        "service": settings.APP_NAME,
-        "version": settings.APP_VERSION
+        "status": "available",
+        "type": "masumi-agent"
     }
 

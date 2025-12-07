@@ -7,15 +7,15 @@ from pydantic import BaseModel, Field
 
 
 class InputDataItem(BaseModel):
-    """Key-value pair for input data"""
-    key: str = Field(..., description="Input key")
-    value: str = Field(..., description="Input value")
+    """Key-value pair for input data (MIP-003 format)"""
+    key: str = Field(..., description="Input key (e.g., 'document', 'pdf')")
+    value: str = Field(..., description="PDF document as base64 data URI (data:application/pdf;base64,...) or URL string")
 
 
 class StartJobRequest(BaseModel):
-    """Request model for starting a job"""
+    """Request model for starting a job (MIP-003 compliant)"""
+    identifier_from_purchaser: Optional[str] = Field(None, description="Optional identifier from purchaser")
     input_data: List[InputDataItem] = Field(..., description="Array of key-value pairs")
-    payment_id: Optional[str] = Field(None, description="Optional payment ID")
 
 
 class StartJobResponse(BaseModel):
@@ -25,8 +25,8 @@ class StartJobResponse(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """Job status response"""
+    """Job status response (MIP-003 compliant)"""
     job_id: str = Field(..., description="Unique job identifier")
     status: str = Field(..., description="Current job status")
-    result: Optional[Dict] = Field(None, description="Job result if completed")
+    result: Optional[str] = Field(None, description="Job result as string if completed (MIP-003)")
     error: Optional[str] = Field(None, description="Error message if failed")

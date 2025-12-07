@@ -20,18 +20,20 @@ class JobService:
         # In-memory job storage (replace with database in production)
         self.jobs: Dict[str, Dict[str, Any]] = {}
     
-    async def create_job(self, input_data: Any, payment_id: str = None) -> StartJobResponse:
+    async def create_job(self, input_data: Any, identifier_from_purchaser: str = None) -> StartJobResponse:
         """
-        Create a new job and return its ID
+        Create a new job and return its ID (MIP-003 compliant)
         
         Args:
             input_data: List of key-value pairs for the job (from Pydantic model)
-            payment_id: Optional payment ID
+            identifier_from_purchaser: Optional identifier from purchaser
             
         Returns:
-            Job ID
+            StartJobResponse with job_id and payment_id
         """
         job_id = str(uuid4())
+        # Generate payment_id (same as job_id for simplicity, or use identifier_from_purchaser if provided)
+        payment_id = identifier_from_purchaser if identifier_from_purchaser else job_id
         
         # Convert input_data list to dictionary for easier access
         input_dict = {item.key: item.value for item in input_data}
@@ -40,11 +42,12 @@ class JobService:
             "status": "processing",
             "input_data": input_dict,
             "payment_id": payment_id,
+            "identifier_from_purchaser": identifier_from_purchaser,
             "result": None,
             "error": None
         }
         
-        logger.info(f"Created job {job_id}")
+        logger.info(f"Created job {job_id} with payment_id {payment_id}")
         return StartJobResponse(job_id=job_id, payment_id=payment_id)
     
     async def process_job(self, job_id: str, db: Optional[AsyncSession] = None) -> None:
@@ -91,9 +94,7 @@ class JobService:
             output_string = await pipeline.process_contract(db=db, pdf_input=pdf_value)
             
             job["status"] = "completed"
-            job["result"] = {
-                "output": output_string  # String output for Masumi
-            }
+            job["result"] = output_string  # MIP-003: result must be a string
             
             logger.info(f"Job {job_id} completed successfully")
             
@@ -123,7 +124,7 @@ class JobService:
     
     async def get_job_status(self, job_id: str) -> StatusResponse:
         """
-        Get job status
+        Get job status (MIP-003 compliant - result must be a string)
         
         Args:
             job_id: Job identifier
@@ -135,9 +136,13 @@ class JobService:
             ValueError: If job not found
         """
         job = await self.get_job(job_id)
+        
+        # MIP-003: result must be a string
+        result_str = job.get("result") if isinstance(job.get("result"), str) else None
+        
         return StatusResponse(
             job_id=job_id,
             status=job["status"],
-            result=job.get("result"),
+            result=result_str,
             error=job.get("error")
         )
