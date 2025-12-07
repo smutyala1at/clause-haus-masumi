@@ -64,14 +64,9 @@ async def analyze_contract(
             )
         
         pipeline = ContractAnalysisPipeline()
-        result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
+        output_string = await pipeline.process_contract(db=db, pdf_input=pdf_value)
         
-        return {
-            "message": "Contract analysis complete",
-            "total_chunks": result['total_chunks'],
-            "found_clauses": result['found_clauses'],
-            "summary": result['summary']
-        }
+        return {"output": output_string}
     
     except HTTPException:
         raise
@@ -99,18 +94,13 @@ async def analyze_contract_test(
         
         file_content = await file.read()
         pipeline = ContractAnalysisPipeline()
-        result = await pipeline.process_contract(
+        output_string = await pipeline.process_contract(
             db=db,
             pdf_input=file_content,
             file_name=file.filename
         )
         
-        return {
-            "message": "Contract analysis complete",
-            "total_chunks": result['total_chunks'],
-            "found_clauses": result['found_clauses'],
-            "summary": result['summary']
-        }
+        return {"output": output_string}
     
     except HTTPException:
         raise

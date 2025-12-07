@@ -88,14 +88,11 @@ class JobService:
             
             # Process contract analysis
             pipeline = ContractAnalysisPipeline()
-            result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
+            output_string = await pipeline.process_contract(db=db, pdf_input=pdf_value)
             
             job["status"] = "completed"
             job["result"] = {
-                "message": "Contract analysis complete",
-                "total_chunks": result['total_chunks'],
-                "found_clauses": result['found_clauses'],
-                "summary": result['summary']
+                "output": output_string  # String output for Masumi
             }
             
             logger.info(f"Job {job_id} completed successfully")

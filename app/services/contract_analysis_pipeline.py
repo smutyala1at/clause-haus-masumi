@@ -58,7 +58,7 @@ class ContractAnalysisPipeline:
         db: AsyncSession,
         pdf_input: Union[str, bytes],
         file_name: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         Process a contract PDF through the complete pipeline.
         
@@ -68,7 +68,7 @@ class ContractAnalysisPipeline:
             file_name: Optional file name (required if pdf_input is bytes)
             
         Returns:
-            Analysis results with found clauses
+            String output with problematic clauses and their analysis
         """
         logger.info("Starting contract analysis pipeline...")
         
@@ -133,11 +133,19 @@ class ContractAnalysisPipeline:
         
         logger.info(f"Pipeline complete. Found {len(found_clauses)} clauses")
         
-        return {
-            'total_chunks': len(chunks),
-            'found_clauses': found_clauses,
-            'summary': f"Analyzed {len(chunks)} contract sections, found {len(found_clauses)} relevant clauses"
-        }
+        # Format output as string for Masumi - only problematic clauses
+        if found_clauses:
+            output_lines = []
+            for i, clause in enumerate(found_clauses, 1):
+                output_lines.append(f"Problematic Clause {i}:")
+                output_lines.append(f"Contract Content: {clause.get('contract_content', 'N/A')}")
+                output_lines.append(f"Analysis: {clause.get('analysis', 'N/A')}")
+                output_lines.append("")
+            output_string = "\n".join(output_lines).strip()
+        else:
+            output_string = "No problematic clauses found in the contract."
+        
+        return output_string
     
     def _extract_text_from_ocr(self, ocr_result: Any) -> str:
         """
