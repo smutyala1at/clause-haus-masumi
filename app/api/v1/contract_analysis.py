@@ -22,7 +22,9 @@ async def analyze_contract(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Analyze a contract from Masumi Network input_data format.
+    Direct contract analysis endpoint (non-blocking, returns immediately).
+    
+    For Masumi Network standard flow, use POST /api/v1/start_job instead.
     
     Expects input_data with a PDF value (base64 or URL):
     {

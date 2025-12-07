@@ -3,10 +3,12 @@ Job service for processing jobs
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from uuid import uuid4
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.job import StartJobRequest, StartJobResponse, StatusResponse
+from app.services.contract_analysis_pipeline import ContractAnalysisPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +47,13 @@ class JobService:
         logger.info(f"Created job {job_id}")
         return StartJobResponse(job_id=job_id, payment_id=payment_id)
     
-    async def process_job(self, job_id: str) -> None:
+    async def process_job(self, job_id: str, db: Optional[AsyncSession] = None) -> None:
         """
-        Process the job.
-        TODO: Implement job processing logic here.
+        Process the job - analyze contract PDF against BGB laws.
         
         Args:
             job_id: Job identifier
+            db: Database session (optional, will be created if not provided)
         """
         if job_id not in self.jobs:
             logger.error(f"Job {job_id} not found")
@@ -61,22 +63,40 @@ class JobService:
             job = self.jobs[job_id]
             input_data = job["input_data"]
             
-            logger.info(f"Processing job {job_id} with input: {input_data}")
+            logger.info(f"Processing job {job_id}")
             
-            # TODO: Implement your job processing logic here
-            # This is where you would:
-            # - Call external APIs
-            # - Process data
-            # - Generate results
-            # etc.
+            # Extract PDF from input_data
+            pdf_value = None
+            for key, value in input_data.items():
+                if key.lower() in ["document", "pdf"]:
+                    pdf_value = value
+                    break
             
-            result = {
-                "output": "Job processing not yet implemented",
-                "status": "completed"
-            }
+            # Fallback: find any PDF-like value
+            if not pdf_value:
+                for key, value in input_data.items():
+                    if isinstance(value, str) and (
+                        value.startswith("data:application/pdf") or
+                        value.startswith("http") or
+                        len(value) > 1000
+                    ):
+                        pdf_value = value
+                        break
+            
+            if not pdf_value:
+                raise ValueError("No PDF found in input_data. Expected 'document' or 'pdf' key with base64 or URL value.")
+            
+            # Process contract analysis
+            pipeline = ContractAnalysisPipeline()
+            result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
             
             job["status"] = "completed"
-            job["result"] = result
+            job["result"] = {
+                "message": "Contract analysis complete",
+                "total_chunks": result['total_chunks'],
+                "found_clauses": result['found_clauses'],
+                "summary": result['summary']
+            }
             
             logger.info(f"Job {job_id} completed successfully")
             
