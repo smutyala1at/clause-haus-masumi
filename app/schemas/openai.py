@@ -32,7 +32,7 @@ class OpenAIError(Exception):
 class EmbeddingRequest(BaseModel):
     """Request for embedding generation"""
     text: str = Field(..., min_length=1, description="Text to embed")
-    model: str = Field(default="text-embedding-3-small", description="Embedding model to use")
+    model: Optional[str] = Field(default=None, description="Embedding model to use (optional)")
 
 
 class ChatMessage(BaseModel):
@@ -49,25 +49,4 @@ class ChatMessage(BaseModel):
         return v
 
 
-class ChatRequest(BaseModel):
-    """Request for chat completion"""
-    messages: List[ChatMessage] = Field(..., min_length=1)
-    model: str = Field(default="gpt-4o-mini", description="Chat model to use")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(default=None, ge=1, le=4096)
-    stream: bool = Field(default=False)
-
-
-class EmbeddingResponse(BaseModel):
-    """Response for embedding generation"""
-    embeddings: List[Embedding] = Field(..., description="List of embedding objects")
-    model: str = Field(..., description="Model used for embeddings")
-    total_texts: int = Field(..., description="Total number of texts embedded")
-
-
-class ChatResponse(BaseModel):
-    """Response for chat completion"""
-    completion: Any = Field(..., description="Chat completion object")
-    content: str = Field(..., description="Extracted message content")
-    tokens_used: int = Field(..., description="Total tokens used in request and response")
 

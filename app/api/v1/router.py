@@ -10,6 +10,7 @@ from app.api.v1 import input_schema
 from app.api.v1 import health
 from app.api.v1 import bgb_parse
 from app.api.v1 import bgb_embed
+from app.api.v1 import contract_analysis
 
 api_router = APIRouter()
 
@@ -20,3 +21,4 @@ api_router.include_router(input_schema.router, prefix="/input_schema", tags=["se
 api_router.include_router(health.router, prefix="/health", tags=["service"])
 api_router.include_router(bgb_parse.router, prefix="/bgb", tags=["bgb"])
 api_router.include_router(bgb_embed.router, prefix="/bgb", tags=["bgb"])
+api_router.include_router(contract_analysis.router, prefix="/contract", tags=["contract"])

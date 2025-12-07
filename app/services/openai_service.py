@@ -7,22 +7,19 @@ rate limiting, and token management.
 import asyncio
 import logging
 import time
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Type
+from pydantic import BaseModel
 
 import httpx
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError, APIError
 from openai.types import Embedding
-from openai import RateLimitError, APIError
 
 from app.core.config import settings
 from app.schemas.openai import (
     OpenAIError,
     OpenAIErrorType,
     EmbeddingRequest,
-    ChatMessage,
-    ChatRequest,
-    EmbeddingResponse,
-    ChatResponse
+    ChatMessage
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +70,6 @@ class OpenAIService:
             raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY in environment variables.")
         
         self.client = AsyncOpenAI(api_key=self.api_key, timeout=60.0)
-        self.sync_client = OpenAI(api_key=self.api_key, timeout=60.0)
         
         # Rate limiting tracking
         self._request_times: Dict[str, List[float]] = {}
@@ -159,84 +155,27 @@ class OpenAIService:
         """
         error_str = str(error).lower()
         
-        # Rate limit errors - OpenAI SDK provides RateLimitError
+        # Rate limit errors
         if isinstance(error, RateLimitError) or "rate limit" in error_str or "429" in error_str:
             retry_after = None
             
-            # Try multiple ways to get retry_after from the error
-            # Note: OpenAI API sends Retry-After header, but SDK may not always expose it
-            # Method 1: From RateLimitError.response.headers (most common)
-            if isinstance(error, RateLimitError):
-                if hasattr(error, 'response') and error.response:
-                    # Try to get headers from response
-                    headers = None
-                    if hasattr(error.response, 'headers'):
-                        headers = error.response.headers
-                    elif hasattr(error.response, 'get'):
-                        # If response is a dict-like object
-                        headers = error.response
-                    
-                    if headers:
-                        retry_after_header = headers.get("retry-after") or headers.get("Retry-After")
-                        if retry_after_header:
-                            try:
-                                retry_after = float(retry_after_header)
-                                logger.debug(f"Extracted retry_after from RateLimitError: {retry_after}s")
-                            except (ValueError, TypeError):
-                                pass
-                
-                # Method 1b: Check if error has retry_after attribute directly
-                if retry_after is None and hasattr(error, 'retry_after'):
-                    try:
-                        retry_after = float(error.retry_after)
-                        logger.debug(f"Extracted retry_after from error.retry_after: {retry_after}s")
-                    except (ValueError, TypeError):
-                        pass
+            # Try to extract retry_after from error
+            if hasattr(error, 'retry_after'):
+                try:
+                    retry_after = float(error.retry_after)
+                except (ValueError, TypeError):
+                    pass
             
-            # Method 2: From APIError (RateLimitError inherits from APIError)
-            if retry_after is None and isinstance(error, APIError):
-                if hasattr(error, 'response') and error.response:
-                    headers = None
-                    if hasattr(error.response, 'headers'):
-                        headers = error.response.headers
-                    elif hasattr(error.response, 'get'):
-                        headers = error.response
-                    
-                    if headers:
-                        retry_after_header = headers.get("retry-after") or headers.get("Retry-After")
-                        if retry_after_header:
-                            try:
-                                retry_after = float(retry_after_header)
-                                logger.debug(f"Extracted retry_after from APIError: {retry_after}s")
-                            except (ValueError, TypeError):
-                                pass
-            
-            # Method 3: From httpx response (if error wraps httpx response)
-            if retry_after is None and hasattr(error, 'response'):
-                response = error.response
-                if response:
-                    headers = None
-                    if hasattr(response, 'headers'):
-                        headers = response.headers
-                    elif isinstance(response, dict):
-                        headers = response
-                    
-                    if headers:
-                        retry_after_header = headers.get("retry-after") or headers.get("Retry-After")
-                        if retry_after_header:
-                            try:
-                                retry_after = float(retry_after_header)
-                                logger.debug(f"Extracted retry_after from response: {retry_after}s")
-                            except (ValueError, TypeError):
-                                pass
-            
-            # Log if we couldn't extract retry_after
-            if retry_after is None:
-                logger.warning(
-                    f"Rate limit error encountered but retry_after not found in error. "
-                    f"Error type: {type(error)}, Error: {str(error)[:200]}. "
-                    f"Will use exponential backoff instead."
-                )
+            # Try to get from response headers
+            if retry_after is None and hasattr(error, 'response') and error.response:
+                headers = getattr(error.response, 'headers', None) or (error.response if isinstance(error.response, dict) else None)
+                if headers:
+                    retry_after_header = headers.get("retry-after") or headers.get("Retry-After")
+                    if retry_after_header:
+                        try:
+                            retry_after = float(retry_after_header)
+                        except (ValueError, TypeError):
+                            pass
             
             return OpenAIError(
                 f"Rate limit exceeded: {str(error)}",
@@ -355,7 +294,7 @@ class OpenAIService:
     
     async def create_embeddings(
         self,
-        texts: Union[str, List[str]],
+        texts: Union[str, List[str], EmbeddingRequest, List[EmbeddingRequest]],
         model: str = "text-embedding-3-small",
         batch_size: int = 100
     ) -> List[Embedding]:
@@ -363,8 +302,8 @@ class OpenAIService:
         Create embeddings for text(s) with automatic batching and error handling.
         
         Args:
-            texts: Single text string or list of texts
-            model: Embedding model to use
+            texts: Single text string, list of texts, EmbeddingRequest, or list of EmbeddingRequest
+            model: Embedding model to use (overrides model in EmbeddingRequest if provided)
             batch_size: Number of texts to process per batch
             
         Returns:
@@ -373,36 +312,50 @@ class OpenAIService:
         Raises:
             OpenAIError: If request fails after retries
         """
-        # Normalize input
-        if isinstance(texts, str):
-            texts = [texts]
+        # Normalize and validate input
+        text_list: List[str] = []
+        embedding_model = model
         
-        if not texts:
+        if isinstance(texts, str):
+            text_list = [texts]
+        elif isinstance(texts, EmbeddingRequest):
+            text_list = [texts.text]
+            embedding_model = texts.model or model
+        elif isinstance(texts, list):
+            if texts and isinstance(texts[0], EmbeddingRequest):
+                text_list = [req.text for req in texts]
+                # Use model from first request if all have same model
+                if texts[0].model:
+                    embedding_model = texts[0].model
+            else:
+                text_list = texts
+        
+        if not text_list:
             raise ValueError("At least one text is required")
         
         # Validate texts
-        for i, text in enumerate(texts):
+        for i, text in enumerate(text_list):
             if not text or not text.strip():
                 raise ValueError(f"Text at index {i} is empty")
         
         all_embeddings = []
         
         # Process in batches
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+        for i in range(0, len(text_list), batch_size):
+            batch = text_list[i:i + batch_size]
             logger.info(f"Processing embedding batch {i // batch_size + 1} ({len(batch)} texts)")
             
             # Estimate tokens
             total_tokens = sum(self._estimate_tokens(text) for text in batch)
             
             # Check rate limits
-            await self._check_rate_limit(model, estimated_tokens=total_tokens)
+            await self._check_rate_limit(embedding_model, estimated_tokens=total_tokens)
             
             # Create embeddings with retry
             async def _create_batch():
                 try:
                     response = await self.client.embeddings.create(
-                        model=model,
+                        model=embedding_model,
                         input=batch
                     )
                     return response.data
@@ -414,10 +367,10 @@ class OpenAIService:
                 all_embeddings.extend(embeddings)
                 
                 # Record request (estimate tokens used)
-                await self._record_request(model, total_tokens)
+                await self._record_request(embedding_model, total_tokens)
                 
                 # Small delay between batches to avoid hitting rate limits
-                if i + batch_size < len(texts):
+                if i + batch_size < len(text_list):
                     await asyncio.sleep(0.1)
                     
             except OpenAIError as e:
@@ -429,21 +382,25 @@ class OpenAIService:
     
     async def create_chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: Union[List[ChatMessage], List[Dict[str, str]]],
         model: str = "gpt-4o-mini",
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-        stream: bool = False
+        stream: bool = False,
+        response_format: Optional[Dict[str, Any]] = None,
+        response_model: Optional[Type[BaseModel]] = None
     ) -> Any:
         """
         Create chat completion with error handling and rate limiting.
         
         Args:
-            messages: List of message dicts with 'role' and 'content'
+            messages: List of ChatMessage objects or message dicts with 'role' and 'content'
             model: Chat model to use
             temperature: Sampling temperature (0-2)
-            max_tokens: Maximum tokens in response
+            max_tokens: Maximum tokens in response (None for no limit)
             stream: Whether to stream the response
+            response_format: Optional dict for response format (legacy)
+            response_model: Optional Pydantic model for structured output (preferred)
             
         Returns:
             ChatCompletion object
@@ -451,18 +408,24 @@ class OpenAIService:
         Raises:
             OpenAIError: If request fails after retries
         """
-        # Validate messages
-        if not messages:
+        # Convert dicts to ChatMessage objects if needed, and validate
+        validated_messages: List[ChatMessage] = []
+        for msg in messages:
+            if isinstance(msg, dict):
+                validated_messages.append(ChatMessage(**msg))
+            elif isinstance(msg, ChatMessage):
+                validated_messages.append(msg)
+            else:
+                raise ValueError(f"Invalid message type: {type(msg)}")
+        
+        if not validated_messages:
             raise ValueError("At least one message is required")
         
-        for msg in messages:
-            if "role" not in msg or "content" not in msg:
-                raise ValueError("Each message must have 'role' and 'content' fields")
-            if msg["role"] not in ["system", "user", "assistant"]:
-                raise ValueError(f"Invalid role: {msg['role']}")
+        # Convert ChatMessage objects to dicts for API call
+        messages_dict = [{"role": msg.role, "content": msg.content} for msg in validated_messages]
         
         # Estimate tokens (rough estimate)
-        total_text = " ".join(msg.get("content", "") for msg in messages)
+        total_text = " ".join(msg.content for msg in validated_messages)
         estimated_tokens = self._estimate_tokens(total_text)
         if max_tokens:
             estimated_tokens += max_tokens
@@ -473,13 +436,45 @@ class OpenAIService:
         # Create completion with retry
         async def _create_completion():
             try:
-                response = await self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=stream
-                )
+                params = {
+                    "model": model,
+                    "messages": messages_dict,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": stream
+                }
+                
+                # Use Pydantic model for structured output if provided
+                if response_model:
+                    json_schema = response_model.model_json_schema()
+                    # OpenAI requires additionalProperties: false for strict mode
+                    # Ensure all object schemas have additionalProperties: false
+                    def add_additional_properties_false(schema):
+                        if isinstance(schema, dict):
+                            if schema.get("type") == "object":
+                                schema["additionalProperties"] = False
+                            # Recursively process nested schemas
+                            for key, value in schema.items():
+                                if isinstance(value, (dict, list)):
+                                    add_additional_properties_false(value)
+                        elif isinstance(schema, list):
+                            for item in schema:
+                                add_additional_properties_false(item)
+                    
+                    add_additional_properties_false(json_schema)
+                    
+                    params["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": response_model.__name__,
+                            "strict": True,
+                            "schema": json_schema
+                        }
+                    }
+                elif response_format:
+                    params["response_format"] = response_format
+                
+                response = await self.client.chat.completions.create(**params)
                 return response
             except Exception as e:
                 raise self._parse_error(e)
@@ -503,45 +498,4 @@ class OpenAIService:
             logger.error(f"Failed to create chat completion: {e.message}")
             raise
     
-    async def create_chat_completion_simple(
-        self,
-        prompt: str,
-        system_message: Optional[str] = None,
-        model: str = "gpt-4o-mini",
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None
-    ) -> str:
-        """
-        Simplified chat completion that returns just the text response.
-        
-        Args:
-            prompt: User prompt
-            system_message: Optional system message
-            model: Chat model to use
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
-            
-        Returns:
-            Response text content
-            
-        Raises:
-            OpenAIError: If request fails
-        """
-        messages = []
-        if system_message:
-            messages.append({"role": "system", "content": system_message})
-        messages.append({"role": "user", "content": prompt})
-        
-        completion = await self.create_chat_completion(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        
-        return completion.choices[0].message.content
-    
-    def is_configured(self) -> bool:
-        """Check if OpenAI service is properly configured"""
-        return bool(self.api_key)
 
