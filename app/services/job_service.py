@@ -6,9 +6,13 @@ import logging
 from typing import Dict, Any, Optional
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from datetime import datetime, timezone
 
 from app.schemas.job import StartJobRequest, StartJobResponse, StatusResponse
 from app.services.contract_analysis_pipeline import ContractAnalysisPipeline
+from app.db.models.contract_analysis_cache import ContractAnalysisCache
+from app.utils.checksum import calculate_pdf_checksum
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +93,59 @@ class JobService:
             if not pdf_value:
                 raise ValueError("No PDF found in input_data. Expected 'document' or 'pdf' key with base64 or URL value.")
             
-            # Process contract analysis
-            pipeline = ContractAnalysisPipeline()
-            output_string = await pipeline.process_contract(db=db, pdf_input=pdf_value)
+            # Calculate checksum for caching
+            checksum = calculate_pdf_checksum(pdf_value)
             
+            # Check cache first
+            if db:
+                cached_result = await db.execute(
+                    select(ContractAnalysisCache).where(ContractAnalysisCache.id == checksum)
+                )
+                cache_entry = cached_result.scalar_one_or_none()
+                
+                if cache_entry:
+                    logger.info(f"Job {job_id}: Using cached result for checksum {checksum[:16]}...")
+                    job["status"] = "completed"
+                    job["result"] = cache_entry.result_string
+                    # Update last_accessed_at
+                    cache_entry.last_accessed_at = datetime.now(timezone.utc)
+                    await db.commit()
+                    logger.info(f"Job {job_id} completed from cache")
+                    return
+            
+            # Process contract analysis (not in cache)
+            logger.info(f"Job {job_id}: Processing new PDF (checksum: {checksum[:16]}...)")
+            pipeline = ContractAnalysisPipeline()
+            result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
+            
+            output_string = result['output']
             job["status"] = "completed"
             job["result"] = output_string  # MIP-003: result must be a string
+            
+            # Store in cache (only if not already exists - race condition protection)
+            if db:
+                try:
+                    # Check again in case another job just cached it
+                    existing = await db.execute(
+                        select(ContractAnalysisCache).where(ContractAnalysisCache.id == checksum)
+                    )
+                    if existing.scalar_one_or_none():
+                        logger.info(f"Job {job_id}: Cache entry already exists (race condition), skipping insert")
+                    else:
+                        cache_entry = ContractAnalysisCache(
+                            id=checksum,
+                            job_id=job_id,  # Store the first job that processed this PDF
+                            chunks=result['chunks'],
+                            chunk_embeddings=result['embeddings'],
+                            openai_result=result['openai_result'],
+                            result_string=output_string
+                        )
+                        db.add(cache_entry)
+                        await db.commit()
+                        logger.info(f"Job {job_id}: Cached result for future use")
+                except Exception as e:
+                    logger.warning(f"Job {job_id}: Failed to cache result: {e}")
+                    await db.rollback()
             
             logger.info(f"Job {job_id} completed successfully")
             

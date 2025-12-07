@@ -58,7 +58,7 @@ class ContractAnalysisPipeline:
         db: AsyncSession,
         pdf_input: Union[str, bytes],
         file_name: Optional[str] = None
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
         Process a contract PDF through the complete pipeline.
         
@@ -68,7 +68,7 @@ class ContractAnalysisPipeline:
             file_name: Optional file name (required if pdf_input is bytes)
             
         Returns:
-            String output with problematic clauses and their analysis
+            Dict with 'output' (string), 'chunks', 'embeddings', and 'openai_result' for caching
         """
         logger.info("Starting contract analysis pipeline...")
         
@@ -145,7 +145,13 @@ class ContractAnalysisPipeline:
         else:
             output_string = "No problematic clauses found in the contract."
         
-        return output_string
+        # Return both string output and data for caching
+        return {
+            'output': output_string,
+            'chunks': chunks,
+            'embeddings': [emb.embedding for emb in embeddings],
+            'openai_result': found_clauses
+        }
     
     def _extract_text_from_ocr(self, ocr_result: Any) -> str:
         """
