@@ -41,11 +41,12 @@ async def start_job(
     # Generate payment_id from job_id (MIP-003: payment_id is returned in response)
     response = await job_service.create_job(
         input_data=request.input_data,
-        identifier_from_purchaser=request.identifier_from_purchaser
+        identifier_from_purchaser=request.identifier_from_purchaser,
+        db=db
     )
     
-    # Start processing in background with database session
-    background_tasks.add_task(job_service.process_job, response.job_id, db)
+    # Start processing in background (job_service will create its own db session)
+    background_tasks.add_task(job_service.process_job, response.job_id)
     
     return response
 
