@@ -8,7 +8,7 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-@router.get("/example/problematic-clauses")
+@router.get("/problematic-clauses")
 async def example_problematic_clauses():
     """
     Example output when problematic clauses are found in a rental contract.
@@ -37,7 +37,7 @@ Analysis: This clause violates BGB §535 and §536, which clearly distinguish be
     }
 
 
-@router.get("/example/multiple-issues")
+@router.get("/multiple-issues")
 async def example_multiple_issues():
     """
     Example output showing multiple types of problematic clauses in a single contract.
@@ -61,7 +61,7 @@ Analysis: This clause violates BGB §551(1), which explicitly limits security de
     }
 
 
-@router.get("/example/no-issues")
+@router.get("/no-issues")
 async def example_no_issues():
     """
     Example output when no problematic clauses are found in a rental contract.
@@ -72,7 +72,7 @@ async def example_no_issues():
     }
 
 
-@router.get("/example/exploitative-practices")
+@router.get("/exploitative-practices")
 async def example_exploitative_practices():
     """
     Example output identifying particularly exploitative or scam-like practices.
