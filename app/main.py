@@ -34,8 +34,8 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
-# Include API routes
-app.include_router(api_router, prefix="/api/v1")
+# Include API routes (Masumi standard - no prefix)
+app.include_router(api_router)
 
 
 @app.on_event("startup")

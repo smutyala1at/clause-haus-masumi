@@ -13,8 +13,15 @@ async def availability():
     """
     Check if the service is available and ready to accept jobs (MIP-003 compliant).
     """
-    return {
+    response = {
         "status": "available",
-        "type": "masumi-agent"
+        "type": "masumi-agent",
+        "network": settings.NETWORK
     }
+    
+    # Include agent identifier if configured
+    if settings.AGENT_IDENTIFIER:
+        response["agent_identifier"] = settings.AGENT_IDENTIFIER
+    
+    return response
 

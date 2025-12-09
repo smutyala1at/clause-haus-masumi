@@ -21,12 +21,14 @@ class Job(Base):
     job_id = Column(String(36), primary_key=True)  # UUID
     
     # Job metadata
-    payment_id = Column(String(36), nullable=True, index=True)
+    payment_id = Column(String(36), nullable=True, index=True)  # Legacy payment ID
+    blockchain_identifier = Column(String(255), nullable=True, index=True)  # Masumi blockchain payment ID
+    payment_status = Column(String(20), nullable=True, index=True)  # awaiting_payment, paid, pending, etc.
     identifier_from_purchaser = Column(String(255), nullable=True)
     
     # Job data
     input_data = Column(JSONB, nullable=False)  # Input data as key-value pairs
-    status = Column(String(20), nullable=False, index=True)  # processing, completed, failed
+    status = Column(String(20), nullable=False, index=True)  # awaiting_payment, running, processing, completed, failed
     
     # Results
     result = Column(Text, nullable=True)  # MIP-003: result must be a string
@@ -40,6 +42,8 @@ class Job(Base):
     __table_args__ = (
         Index('idx_jobs_status', 'status'),
         Index('idx_jobs_payment_id', 'payment_id'),
+        Index('idx_jobs_blockchain_id', 'blockchain_identifier'),
+        Index('idx_jobs_payment_status', 'payment_status'),
         Index('idx_jobs_created_at', 'created_at'),
     )
     

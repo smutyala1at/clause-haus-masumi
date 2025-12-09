@@ -16,12 +16,16 @@ class Settings(BaseSettings):
     
     # Server
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 8000  # Default port, Railway sets PORT env var which Pydantic will read
     
     # Masumi Payment Service Configuration
     PAYMENT_SERVICE_URL: Optional[str] = None
     PAYMENT_API_KEY: Optional[str] = None
     SELLER_VKEY: Optional[str] = None
+    NETWORK: str = "Preprod"  # "Preprod" or "Mainnet"
+    AGENT_IDENTIFIER: Optional[str] = None  # Obtained after agent registration
+    PAYMENT_AMOUNT: Optional[int] = None  # Payment amount (e.g., 10000000 for 10 ADA in lovelace)
+    PAYMENT_UNIT: str = "lovelace"  # Payment unit (default: lovelace)
     
     # CORS
     CORS_ORIGINS: List[str] = ["*"]

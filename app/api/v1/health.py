@@ -23,5 +23,7 @@ async def health():
         "payment_service_configured": payment_service.is_configured(),
         "payment_service_url_configured": bool(settings.PAYMENT_SERVICE_URL),
         "payment_api_key_configured": bool(settings.PAYMENT_API_KEY),
-        "seller_vkey_configured": bool(settings.SELLER_VKEY)
+        "seller_vkey_configured": bool(settings.SELLER_VKEY),
+        "network": settings.NETWORK,
+        "agent_identifier_configured": bool(settings.AGENT_IDENTIFIER)
     }

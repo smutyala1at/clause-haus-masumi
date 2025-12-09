@@ -12,4 +12,5 @@ asyncpg==0.31.0
 pgvector==0.4.2
 alembic==1.17.2
 greenlet==3.3.0
+masumi>=0.1.0
 
