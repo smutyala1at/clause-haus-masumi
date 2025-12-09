@@ -26,10 +26,14 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Copy and make startup script executable
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Expose port (Railway will set PORT env var)
 EXPOSE 8000
 
 # Run migrations and start the application
 # Railway sets PORT environment variable automatically
-CMD ["sh", "-c", "python3 -m alembic upgrade head && python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["/app/start.sh"]
 
