@@ -22,7 +22,7 @@ class Job(Base):
     
     # Job metadata
     payment_id = Column(String(36), nullable=True, index=True)  # Legacy payment ID
-    blockchain_identifier = Column(String(255), nullable=True, index=True)  # Masumi blockchain payment ID
+    blockchain_identifier = Column(Text, nullable=True, index=True)  # Masumi blockchain payment ID (can be very long)
     payment_status = Column(String(20), nullable=True, index=True)  # awaiting_payment, paid, pending, etc.
     identifier_from_purchaser = Column(String(255), nullable=True)
     
