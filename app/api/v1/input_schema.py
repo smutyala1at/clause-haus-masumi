@@ -18,7 +18,8 @@ async def input_schema():
     """
     return {
         "input_data": [
-            {
+            {   
+                "id": "document_upload",
                 "type": "file",
                 "name": "Document Upload",
                 "data": {
