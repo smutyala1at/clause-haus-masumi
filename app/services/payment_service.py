@@ -86,7 +86,7 @@ class PaymentService:
             raise ValueError("Masumi Config not initialized")
         
         try:
-            # Create Payment object
+            # Create Payment object (Masumi pattern - no amounts in constructor)
             payment = Payment(
                 agent_identifier=self.agent_identifier,
                 config=self.config,
@@ -95,23 +95,21 @@ class PaymentService:
                 network=self.network
             )
             
-            # Add amounts if provided, otherwise use default from settings
-            if amounts:
-                payment.amounts = amounts
-            elif self.payment_amount and MASUMI_SDK_AVAILABLE and Amount:
-                # Use default payment amount from settings if configured (Masumi pattern)
-                payment.amounts = [
-                    Amount(amount=str(self.payment_amount), unit=self.payment_unit)
-                ]
-            
-            # Create payment request
-            logger.info("Creating payment request with Masumi SDK...")
+            # Create payment request (Masumi pattern)
+            logger.info("Creating payment request...")
             payment_request = await payment.create_payment_request()
+            
+            blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
+            
+            # Add blockchain identifier to payment (Masumi pattern)
+            payment.payment_ids.add(blockchain_identifier)
+            
+            logger.info(f"Created payment request with ID: {blockchain_identifier}")
             
             return {
                 "payment": payment,
                 "payment_request": payment_request,
-                "blockchain_identifier": payment_request.get("data", {}).get("blockchainIdentifier")
+                "blockchain_identifier": blockchain_identifier
             }
         except Exception as e:
             logger.error(f"Error creating payment request: {e}")

@@ -11,11 +11,16 @@ from datetime import datetime, timezone
 
 from app.schemas.job import StartJobResponse, StatusResponse
 from app.services.contract_analysis_pipeline import ContractAnalysisPipeline
-from app.services.payment_service import PaymentService
+from app.services.payment_service import PaymentService, MASUMI_SDK_AVAILABLE
 from app.db.models.contract_analysis_cache import ContractAnalysisCache
 from app.db.models.job import Job
 from app.utils.checksum import calculate_pdf_checksum
 from app.core.config import settings
+
+# Import Masumi SDK if available
+if MASUMI_SDK_AVAILABLE:
+    from masumi.config import Config
+    from masumi.payment import Payment, Amount
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +31,19 @@ class JobService:
     def __init__(self):
         """Initialize job service with payment service"""
         self.payment_service = PaymentService()
-        # Store payment instances for monitoring (like Masumi example)
+        # Store payment instances for monitoring (Masumi pattern)
         self.payment_instances = {}
+        
+        # Initialize Masumi Config if available (Masumi pattern)
+        self.masumi_config = None
+        if MASUMI_SDK_AVAILABLE and self.payment_service.is_configured():
+            try:
+                self.masumi_config = Config(
+                    payment_service_url=settings.PAYMENT_SERVICE_URL,
+                    payment_api_key=settings.PAYMENT_API_KEY
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize Masumi Config: {e}")
     
     async def create_job_with_payment_and_monitoring(
         self,
@@ -86,32 +102,32 @@ class JobService:
         
         # Create payment request if payment service is configured and not cached
         blockchain_identifier = None
-        payment_request_data = None
+        payment_request = None
         payment_status = "awaiting_payment"
         initial_status = "awaiting_payment"
         payment = None
-        payment_result = None
         
         if cache_entry:
             # If cached, skip payment and mark as completed
             initial_status = "completed"
             payment_status = None
-        elif self.payment_service.is_configured():
+        elif self.payment_service.is_configured() and self.masumi_config:
             try:
-                # Create payment request using Masumi SDK
-                payment_result = await self.payment_service.create_payment_request(
+                # Create Payment object directly (Masumi pattern - exact match to example)
+                payment = Payment(
+                    agent_identifier=settings.AGENT_IDENTIFIER,
+                    config=self.masumi_config,
                     identifier_from_purchaser=identifier_from_purchaser or job_id,
-                    input_data=input_dict
+                    input_data=input_dict,
+                    network=settings.NETWORK
                 )
                 
-                payment = payment_result["payment"]
-                blockchain_identifier = payment_result["blockchain_identifier"]
-                payment_request_data = payment_result["payment_request"]
-                
-                # Add blockchain identifier to payment (Masumi pattern)
+                # Create payment request (Masumi pattern)
+                logger.info("Creating payment request...")
+                payment_request = await payment.create_payment_request()
+                blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
                 payment.payment_ids.add(blockchain_identifier)
-                
-                logger.info(f"Created payment request for job {job_id}: {blockchain_identifier}")
+                logger.info(f"Created payment request with ID: {blockchain_identifier}")
             except Exception as e:
                 logger.error(f"Failed to create payment request: {e}")
                 # Continue without payment if payment service fails
@@ -147,8 +163,8 @@ class JobService:
         if payment and blockchain_identifier and not cache_entry:
             self.payment_instances[job_id] = payment
             logger.info(f"Starting payment status monitoring for job {job_id}")
-            # Start monitoring (this is async and runs in background)
-            await self.payment_service.start_payment_monitoring(payment, payment_callback)
+            # Start monitoring directly on payment instance (Masumi pattern)
+            await payment.start_status_monitoring(payment_callback)
         
         # Build response
         response_data = {
@@ -157,26 +173,26 @@ class JobService:
             "payment_id": identifier_from_purchaser if identifier_from_purchaser else job_id
         }
         
-        if payment_request_data and blockchain_identifier:
-            data = payment_request_data.get("data", {})
+        if payment and blockchain_identifier:
+            data = payment_request.get("data", {})
             
-            # Extract amounts from payment request or use configured amounts
+            # Define payment amounts (Masumi pattern - exact match to example)
+            payment_amount = settings.PAYMENT_AMOUNT or "10000000"  # Default 10 ADA
+            payment_unit = settings.PAYMENT_UNIT or "lovelace"  # Default lovelace
+            
+            amounts = []
+            if MASUMI_SDK_AVAILABLE and Amount:
+                amounts = [Amount(amount=payment_amount, unit=payment_unit)]
+                logger.info(f"Using payment amount: {payment_amount} {payment_unit}")
+            
+            # Convert Amount objects to dict format for Pydantic (Masumi pattern)
             amounts_list = []
-            if payment and payment.amounts:
-                # Convert Amount objects to dict format (Masumi pattern)
-                for amount in payment.amounts:
-                    # Amount object has 'amount' or 'quantity' attribute depending on SDK version
-                    amount_value = getattr(amount, 'amount', None) or getattr(amount, 'quantity', None)
+            if amounts:
+                for amount in amounts:
                     amounts_list.append({
-                        "quantity": str(amount_value),
+                        "amount": str(amount.amount),
                         "unit": amount.unit
                     })
-            elif settings.PAYMENT_AMOUNT:
-                # Use configured payment amount
-                amounts_list = [{
-                    "quantity": str(settings.PAYMENT_AMOUNT),
-                    "unit": settings.PAYMENT_UNIT
-                }]
             
             response_data.update({
                 "blockchainIdentifier": blockchain_identifier,
@@ -187,7 +203,7 @@ class JobService:
                 "sellerVKey": settings.SELLER_VKEY,
                 "identifierFromPurchaser": identifier_from_purchaser,
                 "amounts": amounts_list,
-                "input_hash": payment.input_hash if payment else None,
+                "input_hash": payment.input_hash,
                 "payByTime": data.get("payByTime")
             })
         
@@ -232,25 +248,22 @@ class JobService:
                     # Process the job (contract analysis)
                     await self._process_job_with_session(job_id, session)
                     
-                    # Complete payment with result
+                    # Complete payment with result (Masumi pattern - call directly on payment instance)
                     if job_id in self.payment_instances:
                         payment = self.payment_instances[job_id]
                         result = await session.execute(select(Job).where(Job.job_id == job_id))
                         job = result.scalar_one_or_none()
                         
                         if job and job.result:
-                            await self.payment_service.complete_payment(
-                                payment=payment,
-                                blockchain_identifier=blockchain_identifier,
-                                result_string=job.result
-                            )
+                            # Convert result to string (Masumi pattern)
+                            result_string = job.result
+                            await payment.complete_payment(blockchain_identifier, result_string)
                             logger.info(f"Payment completed for job {job_id}")
                     
-                    # Stop monitoring and cleanup
+                    # Stop monitoring and cleanup (Masumi pattern)
                     if job_id in self.payment_instances:
                         payment = self.payment_instances[job_id]
-                        if hasattr(payment, 'stop_status_monitoring'):
-                            payment.stop_status_monitoring()
+                        payment.stop_status_monitoring()
                         del self.payment_instances[job_id]
                         
                 except Exception as e:
