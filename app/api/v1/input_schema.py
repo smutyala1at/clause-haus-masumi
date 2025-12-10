@@ -18,16 +18,20 @@ async def input_schema():
     """
     return {
         "input_data": [
-            {   
+            {
                 "id": "document_upload",
                 "type": "file",
                 "name": "Document Upload",
                 "data": {
-                    "accept": ".pdf",
-                    "maxSize": "10485760",
                     "description": "Upload a German rental contract PDF document for analysis against BGB laws to identify problematic, unfair, or illegal clauses (max 10MB)",
-                    "outputFormat": "base64"
-                }
+                    "outputFormat": "string"
+                },
+                "validations": [
+                    {"validation": "accept", "value": ".pdf"},
+                    {"validation": "maxSize", "value": "10485760"},
+                    {"validation": "min", "value": "1"},
+                    {"validation": "max", "value": "1"}
+                ]
             }
         ]
     }
