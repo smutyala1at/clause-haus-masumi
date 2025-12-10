@@ -40,7 +40,7 @@ class JobService:
         This matches the Masumi example exactly - creates payment, starts monitoring, returns immediately.
         
         Args:
-            input_data: List of key-value pairs for the job (from Pydantic model)
+            input_data: Dictionary of input data (MIP-003 format from Masumi, keys match input_schema field IDs)
             identifier_from_purchaser: Optional identifier from purchaser
             db: Database session (required)
             
@@ -52,23 +52,25 @@ class JobService:
         
         job_id = str(uuid4())
         
-        # Convert input_data list to dictionary for easier access
-        input_dict = {item.key: item.value for item in input_data}
+        # input_data is now a dictionary (MIP-003 format from Masumi)
+        # Keys match the 'id' field from input_schema (e.g., "document_upload")
+        # Masumi uploads the file and sends a URL string (not base64)
+        input_dict = input_data if isinstance(input_data, dict) else {}
         
-        # Extract PDF to check cache before creating job
+        # Extract PDF URL to check cache before creating job
+        # Look for the field ID from input_schema ("document_upload") or common keys
         pdf_value = None
-        for key, value in input_dict.items():
-            if key.lower() in ["document", "pdf"]:
-                pdf_value = value
+        for key in ["document_upload", "document", "pdf"]:
+            if key in input_dict:
+                pdf_value = input_dict[key]
                 break
         
-        # Fallback: find any PDF-like value
+        # Fallback: find any URL string (Masumi sends URL strings, not base64)
         if not pdf_value:
             for key, value in input_dict.items():
                 if isinstance(value, str) and (
-                    value.startswith("data:application/pdf") or
-                    value.startswith("http") or
-                    len(value) > 1000
+                    value.startswith("http://") or
+                    value.startswith("https://")
                 ):
                     pdf_value = value
                     break
@@ -539,26 +541,27 @@ class JobService:
             
             logger.info(f"Processing job {job_id}")
             
-            # Extract PDF from input_data
+            # Extract PDF URL from input_data (dictionary format from Masumi)
+            # Masumi uploads the file and sends a URL string (not base64)
+            # Look for the field ID from input_schema ("document_upload") or common keys
             pdf_value = None
-            for key, value in input_data.items():
-                if key.lower() in ["document", "pdf"]:
-                    pdf_value = value
+            for key in ["document_upload", "document", "pdf"]:
+                if key in input_data:
+                    pdf_value = input_data[key]
                     break
             
-            # Fallback: find any PDF-like value
+            # Fallback: find any URL string (Masumi sends URL strings, not base64)
             if not pdf_value:
                 for key, value in input_data.items():
                     if isinstance(value, str) and (
-                        value.startswith("data:application/pdf") or
-                        value.startswith("http") or
-                        len(value) > 1000
+                        value.startswith("http://") or
+                        value.startswith("https://")
                     ):
                         pdf_value = value
                         break
             
             if not pdf_value:
-                raise ValueError("No PDF found in input_data. Expected 'document' or 'pdf' key with base64 or URL value.")
+                raise ValueError("No PDF URL found in input_data. Expected 'document_upload' key (from input_schema) with URL string value.")
             
             # Calculate checksum for caching
             checksum = calculate_pdf_checksum(pdf_value)

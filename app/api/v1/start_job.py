@@ -35,7 +35,7 @@ async def start_job(
     {
         "identifier_from_purchaser": "optional_identifier",
         "input_data": {
-            "document": "data:application/pdf;base64,..." or "https://..."
+            "document_upload": "https://..."  // Masumi uploads file and sends URL string
         }
     }
     """

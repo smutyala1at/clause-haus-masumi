@@ -6,16 +6,10 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
-class InputDataItem(BaseModel):
-    """Key-value pair for input data (MIP-003 format)"""
-    key: str = Field(..., description="Input key (e.g., 'document', 'pdf')")
-    value: str = Field(..., description="PDF document as base64 data URI (data:application/pdf;base64,...) or URL string")
-
-
 class StartJobRequest(BaseModel):
     """Request model for starting a job (MIP-003 compliant)"""
     identifier_from_purchaser: Optional[str] = Field(None, description="Optional identifier from purchaser")
-    input_data: List[InputDataItem] = Field(..., description="Array of key-value pairs")
+    input_data: Dict[str, str] = Field(..., description="Dictionary of input data where keys match input_schema field IDs (e.g., 'document_upload': 'https://...')")
 
 
 class StartJobResponse(BaseModel):
