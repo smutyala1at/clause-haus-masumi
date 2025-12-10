@@ -185,7 +185,7 @@ class JobService:
                 amounts = [Amount(amount=payment_amount, unit=payment_unit)]
                 logger.info(f"Using payment amount: {payment_amount} {payment_unit}")
             
-            # Convert Amount objects to dict format for Pydantic (Masumi pattern)
+            # Convert amounts to dict format for Pydantic serialization (Masumi pattern)
             amounts_list = []
             if amounts:
                 for amount in amounts:
@@ -202,7 +202,7 @@ class JobService:
                 "agentIdentifier": settings.AGENT_IDENTIFIER,
                 "sellerVKey": settings.SELLER_VKEY,
                 "identifierFromPurchaser": identifier_from_purchaser,
-                "amounts": amounts_list,
+                "amounts": amounts_list,  # Converted to dicts for Pydantic
                 "input_hash": payment.input_hash,
                 "payByTime": data.get("payByTime")
             })
@@ -248,15 +248,17 @@ class JobService:
                     # Process the job (contract analysis)
                     await self._process_job_with_session(job_id, session)
                     
-                    # Complete payment with result (Masumi pattern - call directly on payment instance)
+                    # Complete payment with result (Masumi pattern - exact match to example)
                     if job_id in self.payment_instances:
                         payment = self.payment_instances[job_id]
                         result = await session.execute(select(Job).where(Job.job_id == job_id))
                         job = result.scalar_one_or_none()
                         
                         if job and job.result:
-                            # Convert result to string (Masumi pattern)
-                            result_string = job.result
+                            # Convert result to string (Masumi pattern - exact match to example)
+                            result_string = job.result  # Already a string from our pipeline
+                            
+                            # Mark payment as completed on Masumi (exact match to example)
                             await payment.complete_payment(blockchain_identifier, result_string)
                             logger.info(f"Payment completed for job {job_id}")
                     
@@ -267,21 +269,29 @@ class JobService:
                         del self.payment_instances[job_id]
                         
                 except Exception as e:
-                    logger.error(f"Error processing job after payment confirmation: {e}")
-                    # Update job status to failed
+                    logger.error(f"Error processing payment {blockchain_identifier} for job {job_id}: {str(e)}")
+                    # Update job status to failed (Masumi pattern)
                     try:
                         result = await session.execute(select(Job).where(Job.job_id == job_id))
                         job = result.scalar_one_or_none()
                         if job:
                             job.status = "failed"
-                            job.error = f"Error after payment confirmation: {str(e)}"
+                            job.error = str(e)
                             await session.commit()
                     except Exception as db_error:
                         logger.error(f"Failed to update job status: {db_error}")
+                    
+                    # Still stop monitoring to prevent repeated failures (Masumi pattern)
+                    if job_id in self.payment_instances:
+                        try:
+                            self.payment_instances[job_id].stop_status_monitoring()
+                        except:
+                            pass
+                        del self.payment_instances[job_id]
                 finally:
                     await session.close()
         except Exception as e:
-            logger.error(f"Error in payment callback for job {job_id}: {e}")
+            logger.error(f"Error in payment callback for job {job_id}: {e}", exc_info=True)
     
     async def create_job_with_payment(
         self,
