@@ -614,6 +614,8 @@ class JobService:
             result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
             
             output_string = result['output']
+            # Remove null bytes (PostgreSQL doesn't allow them in UTF-8 strings)
+            output_string = output_string.replace('\x00', '')
             job.status = "completed"
             job.result = output_string  # MIP-003: result must be a string
             await db.commit()  # Commit job status update
@@ -628,13 +630,15 @@ class JobService:
                     if existing.scalar_one_or_none():
                         logger.info(f"Job {job_id}: Cache entry already exists (race condition), skipping insert")
                     else:
+                        # Sanitize result string before caching (remove null bytes)
+                        sanitized_result = output_string.replace('\x00', '')
                         cache_entry = ContractAnalysisCache(
                             id=checksum,
                             job_id=job_id,  # Store the first job that processed this PDF
                             chunks=result['chunks'],
                             chunk_embeddings=result['embeddings'],
                             openai_result=result['openai_result'],
-                            result_string=output_string
+                            result_string=sanitized_result
                         )
                         db.add(cache_entry)
                         await db.commit()
@@ -839,6 +843,9 @@ class JobService:
             # Convert result to string for payment completion (exact match to example)
             # Check if result has .raw attribute (CrewOutput), otherwise convert to string
             result_string = result.raw if hasattr(result, "raw") else str(result)
+            
+            # Remove null bytes (PostgreSQL doesn't allow them in UTF-8 strings)
+            result_string = result_string.replace('\x00', '')
             
             # Mark payment as completed on Masumi (exact match to example)
             if job_id in self.payment_instances:
