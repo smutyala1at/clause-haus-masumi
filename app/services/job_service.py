@@ -129,10 +129,13 @@ class JobService:
                 payment.payment_ids.add(blockchain_identifier)
                 logger.info(f"Created payment request with ID: {blockchain_identifier}")
             except Exception as e:
-                logger.error(f"Failed to create payment request: {e}")
+                logger.error(f"Failed to create payment request: {e}", exc_info=True)
                 # Continue without payment if payment service fails
                 initial_status = "processing"
                 payment_status = None
+                payment = None
+                payment_request = None
+                blockchain_identifier = None
         
         # Create job in database
         job = Job(
@@ -774,6 +777,107 @@ class JobService:
             except Exception as db_error:
                 logger.error(f"Failed to update job status: {db_error}")
     
+    async def create_job_in_db(
+        self,
+        job_id: str,
+        blockchain_identifier: str,
+        identifier_from_purchaser: str,
+        input_data: Dict[str, str],
+        status: str,
+        db: AsyncSession
+    ) -> None:
+        """Create job in database (exact match to example pattern)"""
+        job = Job(
+            job_id=job_id,
+            payment_id=identifier_from_purchaser if identifier_from_purchaser else job_id,
+            blockchain_identifier=blockchain_identifier,
+            payment_status="pending" if blockchain_identifier else None,
+            identifier_from_purchaser=identifier_from_purchaser,
+            input_data=input_data,
+            status=status,
+            result=None,
+            error=None
+        )
+        db.add(job)
+        await db.commit()
+    
+    async def handle_payment_status(self, job_id: str, payment_id: str, db: AsyncSession) -> None:
+        """Executes contract analysis after payment confirmation (exact match to example, but uses DB)"""
+        try:
+            logger.info(f"Payment {payment_id} completed for job {job_id}, executing task...")
+            
+            # Update job status to running (DB instead of memory)
+            result = await db.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one_or_none()
+            
+            if not job:
+                logger.error(f"Job {job_id} not found")
+                return
+            
+            job.status = "running"
+            await db.commit()
+            logger.info(f"Input data: {job.input_data}")
+
+            # Execute the contract analysis task (our service instead of CrewAI)
+            from app.services.contract_analysis_pipeline import ContractAnalysisPipeline
+            pipeline = ContractAnalysisPipeline()
+            
+            # Extract PDF URL from input_data
+            pdf_value = job.input_data.get("document_upload") or job.input_data.get("document") or job.input_data.get("pdf")
+            if not pdf_value:
+                # Fallback: find any URL
+                for value in job.input_data.values():
+                    if isinstance(value, str) and (value.startswith("http://") or value.startswith("https://")):
+                        pdf_value = value
+                        break
+            
+            analysis_result = await pipeline.process_contract(db=db, pdf_input=pdf_value)
+            result = analysis_result['output']  # Our pipeline returns dict with 'output' key
+            print(f"Result: {result}")
+            logger.info(f"Contract analysis completed for job {job_id}")
+            
+            # Convert result to string for payment completion (exact match to example)
+            # Check if result has .raw attribute (CrewOutput), otherwise convert to string
+            result_string = result.raw if hasattr(result, "raw") else str(result)
+            
+            # Mark payment as completed on Masumi (exact match to example)
+            if job_id in self.payment_instances:
+                await self.payment_instances[job_id].complete_payment(payment_id, result_string)
+                logger.info(f"Payment completed for job {job_id}")
+
+            # Update job status (DB instead of memory)
+            job.status = "completed"
+            job.payment_status = "completed"
+            job.result = result_string
+            await db.commit()
+
+            # Stop monitoring payment status (exact match to example)
+            if job_id in self.payment_instances:
+                self.payment_instances[job_id].stop_status_monitoring()
+                del self.payment_instances[job_id]
+        except Exception as e:
+            print(f"Error processing payment {payment_id} for job {job_id}: {str(e)}")
+            logger.error(f"Error processing payment {payment_id} for job {job_id}: {str(e)}", exc_info=True)
+            
+            # Update job status to failed (DB instead of memory)
+            try:
+                result = await db.execute(select(Job).where(Job.job_id == job_id))
+                job = result.scalar_one_or_none()
+                if job:
+                    job.status = "failed"
+                    job.error = str(e)
+                    await db.commit()
+            except Exception as db_error:
+                logger.error(f"Failed to update job status: {db_error}")
+            
+            # Still stop monitoring to prevent repeated failures (exact match to example)
+            if job_id in self.payment_instances:
+                try:
+                    self.payment_instances[job_id].stop_status_monitoring()
+                except:
+                    pass
+                del self.payment_instances[job_id]
+    
     async def get_job_status(self, job_id: str, db: Optional[AsyncSession] = None) -> StatusResponse:
         """
         Get job status (MIP-003 compliant - result must be a string)
@@ -793,12 +897,25 @@ class JobService:
         
         job = await self.get_job(job_id, db)
         
-        # MIP-003: result must be a string
-        result_str = job.result if isinstance(job.result, str) else None
+        # Check latest payment status if payment instance exists (Masumi pattern - exact match to example)
+        if job_id in self.payment_instances:
+            try:
+                payment = self.payment_instances[job_id]
+                status = await payment.check_payment_status()
+                payment_status = status.get("data", {}).get("status")
+                logger.info(f"Updated payment status for job {job_id}: {payment_status}")
+            except ValueError as e:
+                logger.warning(f"Error checking payment status: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
+        
+        # MIP-003: result must be a string (Masumi pattern - exact match to example)
+        result_data = job.result
+        result = result_data.raw if result_data and hasattr(result_data, "raw") else (result_data if isinstance(result_data, str) else None)
         
         return StatusResponse(
             job_id=job_id,
             status=job.status,
-            result=result_str,
+            result=result,
             error=job.error
         )
