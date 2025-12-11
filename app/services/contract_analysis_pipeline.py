@@ -133,17 +133,57 @@ class ContractAnalysisPipeline:
         
         logger.info(f"Pipeline complete. Found {len(found_clauses)} clauses")
         
-        # Format output as string for Masumi - only problematic clauses
+        # Format output as string for Masumi - Markdown-friendly formatting
         if found_clauses:
             output_lines = []
+            output_lines.append("# Contract Analysis Report")
+            output_lines.append("")
+            output_lines.append(f"**Analysis completed.** Found **{len(found_clauses)} problematic clause(s)** that violate German tenant protections.")
+            output_lines.append("")
+            output_lines.append("---")
+            output_lines.append("")
+            
             for i, clause in enumerate(found_clauses, 1):
-                output_lines.append(f"Problematic Clause {i}:")
-                output_lines.append(f"Contract Content: {clause.get('contract_content', 'N/A')}")
-                output_lines.append(f"Analysis: {clause.get('analysis', 'N/A')}")
+                output_lines.append(f"## Issue #{i}")
                 output_lines.append("")
+                output_lines.append("### Contract Clause")
+                output_lines.append("")
+                # Format contract content as blockquote for better readability
+                contract_content = clause.get('contract_content', 'N/A').strip()
+                # Use blockquote formatting for contract content
+                if contract_content:
+                    # Split into lines and add blockquote marker
+                    content_lines = contract_content.split('\n')
+                    for line in content_lines:
+                        if line.strip():
+                            output_lines.append(f"> {line.strip()}")
+                        else:
+                            output_lines.append(">")
+                else:
+                    output_lines.append("> N/A")
+                output_lines.append("")
+                output_lines.append("### Legal Analysis")
+                output_lines.append("")
+                analysis = clause.get('analysis', 'N/A').strip()
+                # Format analysis as regular markdown text
+                if analysis:
+                    output_lines.append(analysis)
+                else:
+                    output_lines.append("N/A")
+                output_lines.append("")
+                if i < len(found_clauses):
+                    output_lines.append("---")
+                    output_lines.append("")
+            
             output_string = "\n".join(output_lines).strip()
         else:
-            output_string = "No problematic clauses found in the contract."
+            output_string = (
+                "# Contract Analysis Report\n\n"
+                "**Analysis completed.** No problematic clauses found.\n\n"
+                "The contract appears to comply with German rental law (BGB) and does not contain "
+                "any clauses that violate mandatory tenant protections, are unfair under BGB §307, "
+                "or are exploitative in nature."
+            )
         
         # Return both string output and data for caching
         return {
@@ -251,20 +291,47 @@ Relevant BGB Sections:
         all_chunks_text = "\n" + "="*80 + "\n".join(chunks_text)
         
         system_message = (
-            "You are a legal expert in German rental contract law (BGB). "
-            "Identify problematic, unfair, illegal, or scam-like clauses that violate German tenant protections. "
-            "For each problematic clause, provide the contract content and analysis explaining why it's problematic."
+            "You are a legal expert in German rental contract law (BGB) specializing in tenant protection. "
+            "Your task is to identify ONLY genuinely problematic clauses that violate German tenant protections or are unfair/illegal. "
+            "\n\n"
+            "IMPORTANT CRITERIA - Only flag clauses that are:\n"
+            "1. ILLEGAL: Violate mandatory BGB provisions (e.g., deposits >3 months, waivers of inalienable rights, void clauses under BGB §134)\n"
+            "2. UNFAIR: Exploitative terms that disadvantage tenants unreasonably (BGB §307)\n"
+            "3. SCAM-LIKE: Clearly designed to extract money or rights from tenants through deception\n"
+            "\n"
+            "DO NOT flag:\n"
+            "- Standard legal clauses that comply with BGB\n"
+            "- Reasonable restrictions (e.g., normal pet policies, standard maintenance responsibilities)\n"
+            "- Standard rental terms (rent amount, duration, notice periods within legal limits)\n"
+            "- Clauses that are merely unfavorable but still legal\n"
+            "- Standard boilerplate language\n"
+            "\n"
+            "Be conservative: Only flag clauses that are clearly problematic under German law. "
+            "When in doubt, do not flag the clause."
         )
         
-        user_prompt = f"""Analyze these contract chunks against BGB sections to find problematic clauses:
+        user_prompt = f"""Analyze these contract chunks against the relevant BGB sections provided:
 
 {all_chunks_text}
 
-For each chunk with problematic clauses (unfair, illegal, scam-like, or violating tenant protections), provide:
-1. Contract content (the chunk text)
-2. Analysis explaining why it's problematic, which BGB protections it violates, and what makes it illegal/exploitative
+For each chunk, carefully evaluate whether it contains genuinely problematic clauses that violate German tenant protections.
 
-Only include chunks with problematic clauses. Return empty array if none found."""
+ONLY include clauses that meet these strict criteria:
+- The clause clearly violates a mandatory BGB provision (e.g., illegal deposit amounts, waivers of inalienable rights)
+- The clause is exploitative and unfair under BGB §307 (unfair contract terms)
+- The clause is designed to circumvent tenant protections in a scam-like manner
+
+For each problematic clause found, provide:
+1. Contract content: The exact text from the contract that is problematic
+2. Analysis: A clear, professional explanation that includes:
+   - Which specific BGB provision(s) are violated
+   - Why the clause is illegal/unfair/exploitative
+   - The legal basis for why this clause would be void or unenforceable
+   - What the correct legal standard should be
+
+If a chunk contains only standard, legal clauses that comply with BGB, do NOT include it in your response.
+
+Return an empty array if no genuinely problematic clauses are found."""
         
         try:
             completion = await self.openai_service.create_chat_completion(
