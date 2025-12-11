@@ -94,7 +94,7 @@ class JobService:
         # Check cache before creating job (optimization)
         cache_entry = None
         if pdf_value:
-            checksum = calculate_pdf_checksum(pdf_value)
+            checksum = await calculate_pdf_checksum(pdf_value)
             cached_result = await db.execute(
                 select(ContractAnalysisCache).where(ContractAnalysisCache.id == checksum)
             )
@@ -342,7 +342,7 @@ class JobService:
         # Check cache before creating job (optimization)
         cache_entry = None
         if pdf_value:
-            checksum = calculate_pdf_checksum(pdf_value)
+            checksum = await calculate_pdf_checksum(pdf_value)
             cached_result = await db.execute(
                 select(ContractAnalysisCache).where(ContractAnalysisCache.id == checksum)
             )
@@ -490,7 +490,7 @@ class JobService:
         # Check cache before creating job (optimization)
         cache_entry = None
         if pdf_value:
-            checksum = calculate_pdf_checksum(pdf_value)
+            checksum = await calculate_pdf_checksum(pdf_value)
             cached_result = await db.execute(
                 select(ContractAnalysisCache).where(ContractAnalysisCache.id == checksum)
             )
@@ -590,7 +590,7 @@ class JobService:
                 raise ValueError("No PDF URL found in input_data. Expected 'document_upload' key (from input_schema) with URL string value.")
             
             # Calculate checksum for caching
-            checksum = calculate_pdf_checksum(pdf_value)
+            checksum = await calculate_pdf_checksum(pdf_value)
             
             # Check cache first (in case job was created before cache check)
             cached_result = await db.execute(
